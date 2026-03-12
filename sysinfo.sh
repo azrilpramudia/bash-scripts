@@ -193,7 +193,7 @@ awk 'BEGIN{
     sep = ""
     for (i=1; i<=W; i++) sep = sep "-"
     print sep
-    print "         SYSTEM MONITOR"
+    print "         SYSTEM INFORMATION"
     print sep
 }'
 

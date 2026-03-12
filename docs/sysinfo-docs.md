@@ -1,4 +1,4 @@
-# System Information Documentation
+# sysinfo.sh documentation
 
 A lightweight, dependency-free system information script written in pure Bash and `awk`. Displays a clean snapshot of your system — OS, CPU, temperature, memory, disk — in a single terminal run. No colors, no bloat.
 
