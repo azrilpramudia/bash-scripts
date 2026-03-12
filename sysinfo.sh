@@ -14,8 +14,8 @@ cores=$(awk '/^core id/{c[$2]=1} END{print length(c)}' /proc/cpuinfo)
 threads=$(awk '/^processor/{n++} END{print n}' /proc/cpuinfo)
 load=$(awk '{print $1" / "$2" / "$3}' /proc/loadavg)
 
-# --- Suhu CPU ---
-cpu_temp="Tidak tersedia"
+# --- CPU Temperature ---
+cpu_temp="N/A"
 for zone in /sys/class/thermal/thermal_zone*/temp; do
     type=$(cat "${zone%temp}type" 2>/dev/null)
     case "$type" in
@@ -28,7 +28,7 @@ for zone in /sys/class/thermal/thermal_zone*/temp; do
 done
 
 # Fallback: hwmon coretemp
-if [ "$cpu_temp" = "Tidak tersedia" ]; then
+if [ "$cpu_temp" = "N/A" ]; then
     for hwmon in /sys/class/hwmon/hwmon*/; do
         name=$(cat "${hwmon}name" 2>/dev/null | tr -d '[:space:]')
         if [ "$name" = "coretemp" ] && [ -r "${hwmon}temp1_input" ]; then
@@ -39,8 +39,8 @@ if [ "$cpu_temp" = "Tidak tersedia" ]; then
     done
 fi
 
-# --- Suhu GPU ---
-# Fungsi: baca millidegree dari file dan konversi ke °C
+# --- GPU Temperature ---
+# Helper: read millidegree value from file and convert to °C
 _read_temp() {
     local file="$1"
     local raw
@@ -49,7 +49,7 @@ _read_temp() {
         awk "BEGIN{printf \"%.1f\", $raw/1000}"
 }
 
-gpu_temp="Tidak tersedia"
+gpu_temp="N/A"
 
 # [1] NVIDIA dedicated — nvidia-smi
 if command -v nvidia-smi &>/dev/null; then
@@ -60,21 +60,21 @@ if command -v nvidia-smi &>/dev/null; then
 fi
 
 # [2] AMD dedicated — rocm-smi
-if [ "$gpu_temp" = "Tidak tersedia" ] && command -v rocm-smi &>/dev/null; then
+if [ "$gpu_temp" = "N/A" ] && command -v rocm-smi &>/dev/null; then
     _t=$(rocm-smi --showtemp 2>/dev/null | \
          awk '/Temperature/{gsub(/[^0-9.]/,"",$NF); print $NF; exit}')
     [ -n "$_t" ] && gpu_temp="${_t}°C (AMD Dedicated)"
 fi
 
-# [3] Scan seluruh hwmon — cek nama driver satu per satu
-if [ "$gpu_temp" = "Tidak tersedia" ]; then
+# [3] Scan all hwmon nodes — check driver name one by one
+if [ "$gpu_temp" = "N/A" ]; then
     for hwmon in /sys/class/hwmon/hwmon*/; do
         [ -d "$hwmon" ] || continue
         drv=$(cat "${hwmon}name" 2>/dev/null | tr -d '[:space:]')
 
         case "$drv" in
 
-            # --- NVIDIA via hwmon (driver nouveau/open kernel) ---
+            # --- NVIDIA via hwmon (nouveau / open kernel driver) ---
             nouveau)
                 _t=$(_read_temp "${hwmon}temp1_input")
                 [ -n "$_t" ] && gpu_temp="${_t}°C (NVIDIA/nouveau)" && break
@@ -82,7 +82,7 @@ if [ "$gpu_temp" = "Tidak tersedia" ]; then
 
             # --- AMD dedicated & iGPU (amdgpu/radeon) ---
             amdgpu|radeon)
-                # Cari label 'edge' dulu (suhu die), fallback ke temp1
+                # Look for 'edge' label first (die temp), fallback to temp1
                 _t=""
                 for tf in "${hwmon}"temp*_input; do
                     [ -r "$tf" ] || continue
@@ -95,7 +95,7 @@ if [ "$gpu_temp" = "Tidak tersedia" ]; then
                 [ -n "$_t" ] && gpu_temp="${_t}°C (AMD GPU)" && break
                 ;;
 
-            # --- Intel iGPU generasi baru (driver i915 / xe) ---
+            # --- Intel iGPU new gen (driver i915 / xe) ---
             i915)
                 _t=$(_read_temp "${hwmon}temp1_input")
                 [ -n "$_t" ] && gpu_temp="${_t}°C (Intel iGPU/i915)" && break
@@ -105,14 +105,14 @@ if [ "$gpu_temp" = "Tidak tersedia" ]; then
                 [ -n "$_t" ] && gpu_temp="${_t}°C (Intel Arc/xe)" && break
                 ;;
 
-            # --- Intel PCH (Broadwell/Haswell/Skylake dst) ---
-            # pch_wildcat_point, pch_sunrise_point, pch_cannonlake, dll
+            # --- Intel PCH (Broadwell/Haswell/Skylake etc.) ---
+            # pch_wildcat_point, pch_sunrise_point, pch_cannonlake, etc.
             pch_*|pch)
                 _t=$(_read_temp "${hwmon}temp1_input")
                 [ -n "$_t" ] && gpu_temp="${_t}°C (Intel iGPU/PCH)" && break
                 ;;
 
-            # --- ThinkPad EC — cari label GPU eksplisit ---
+            # --- ThinkPad EC — look for explicit GPU label ---
             thinkpad)
                 for tf in "${hwmon}"temp*_input; do
                     [ -r "$tf" ] || continue
@@ -124,7 +124,7 @@ if [ "$gpu_temp" = "Tidak tersedia" ]; then
                 done
                 ;;
 
-            # --- AMD APU — k10temp, cari label Tccd/Tdie ---
+            # --- AMD APU — k10temp, look for Tccd/Tdie label ---
             k10temp)
                 for tf in "${hwmon}"temp*_input; do
                     [ -r "$tf" ] || continue
@@ -148,8 +148,8 @@ if [ "$gpu_temp" = "Tidak tersedia" ]; then
     done
 fi
 
-# [4] Fallback thermal_zone — cari tipe GPU/DISP
-if [ "$gpu_temp" = "Tidak tersedia" ]; then
+# [4] Fallback thermal_zone — look for GPU/DISP type
+if [ "$gpu_temp" = "N/A" ]; then
     for zone in /sys/class/thermal/thermal_zone*/temp; do
         type=$(cat "${zone%temp}type" 2>/dev/null | tr -d '[:space:]')
         case "$type" in
@@ -165,8 +165,8 @@ if [ "$gpu_temp" = "Tidak tersedia" ]; then
     done
 fi
 
-# [5] Last resort: intel_gpu_top (butuh package intel-gpu-tools)
-if [ "$gpu_temp" = "Tidak tersedia" ] && command -v intel_gpu_top &>/dev/null; then
+# [5] Last resort: intel_gpu_top (requires intel-gpu-tools package)
+if [ "$gpu_temp" = "N/A" ] && command -v intel_gpu_top &>/dev/null; then
     _t=$(timeout 2 intel_gpu_top -J -s 1 2>/dev/null | \
          awk -F: '/"temperature"/{gsub(/[^0-9.]/,"",$2); if($2!="") print $2; exit}')
     [ -n "$_t" ] && gpu_temp="${_t}°C (Intel iGPU/gpu_top)"
@@ -176,15 +176,13 @@ fi
 ram=$(free -m | awk 'NR==2{printf "%d/%d MB (%.1f%%)", $3, $2, $3*100/$2}')
 swap=$(free -m | awk 'NR==3{
     if ($2 > 0) printf "%d/%d MB (%.1f%%)", $3, $2, $3*100/$2
-    else print "Tidak ada swap"
+    else print "No swap"
 }')
 
 # --- Disk ---
 disk=$(df -h | awk '$NF=="/"{printf "%s/%s (%s)", $3, $2, $5}')
 
-# --- Proses ---
-total_proc=$(ps aux --no-header | wc -l)
-run_proc=$(ps aux --no-header | awk '$8~/^R/{n++} END{print n+0}')
+
 
 # ================================
 #  Output
@@ -221,19 +219,9 @@ printf "%-14s : %s\n" "RAM"          "$ram"
 printf "%-14s : %s\n" "Swap"         "$swap"
 printf "%-14s : %s\n" "Disk (/)"     "$disk"
 
-awk 'BEGIN{print "--------------------------------------------"}'
-
-printf "%-14s : %s\n" "Total Proses" "$total_proc"
-printf "%-14s : %s\n" "Running"      "$run_proc"
-
-echo ""
-echo "Top 3 CPU:"
-ps aux --no-header | sort -rk3 | head -3 | \
-    awk '{printf "  %-25s CPU: %5s%%  MEM: %5s%%\n", substr($11,1,25), $3, $4}'
-
-echo ""
-echo "Top 3 Memory:"
-ps aux --no-header | sort -rk4 | head -3 | \
-    awk '{printf "  %-25s MEM: %5s%%  CPU: %5s%%\n", substr($11,1,25), $4, $3}'
-
-
+awk -v d="$(date '+%Y-%m-%d %H:%M:%S')" \
+    'BEGIN{
+        print "--------------------------------------------"
+        printf "%-14s : %s\n", "Time", d
+        print "--------------------------------------------"
+    }'
